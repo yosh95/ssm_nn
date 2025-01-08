@@ -14,17 +14,16 @@ from torch.utils.data import DataLoader
 
 def main(args):
     # Hyper parameters
-    batch_size = 1
-    learning_rate = 0.01
-    num_epochs = 200
-    clip_value = 1.0
-    d_model = 8
+    batch_size = 2
+    learning_rate = 0.001
+    num_epochs = 1000
+    clip_value = 2.0
+    d_model = 16
     d_state = 2
     expansion_factor = 2
     num_layers = 2
-    window_size = 3
-    stride = 1
-    label_mode = 'all'
+    window_size = 6
+    stride = 2
     normalize = False
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -32,25 +31,20 @@ def main(args):
     train_dataset = CSVDataset(csv_file=args.train_data,
                                window_size=window_size,
                                stride=stride,
-                               skip_header=True,
-                               label_mode=label_mode,
-                               normalize=normalize)
+                               skip_header=True)
     test_dataset = CSVDataset(csv_file=args.test_data,
-                              skip_header=True,
-                              label_mode=label_mode,
-                              normalize=normalize)
+                              skip_header=True)
 
     train_dataloader = DataLoader(train_dataset,
                                   batch_size=batch_size,
-                                  shuffle=False)
+                                  shuffle=True)
 
     test_dataloader = DataLoader(test_dataset,
                                  batch_size=batch_size,
                                  shuffle=False)
-    input_size = train_dataset.data.shape[2] - 1
-    output_size = 2
 
-    #pdb.set_trace() # Keep this if debugging is needed
+    input_size = torch.numel(train_dataset.data[0][0]) - 1
+    output_size = 2
 
     # Model instantiation
     model = Model(d_model,
@@ -69,13 +63,17 @@ def main(args):
     for epoch in range(num_epochs):
         model.train()
         epoch_loss = 0.0
-        for i, (inputs, labels) in enumerate(train_dataloader):
-            inputs = inputs.to(device)
-            labels = labels.long().to(device).squeeze(-1)
+        for i, inputs in enumerate(train_dataloader):
+            train_inputs = inputs[:, :, :-1].to(device)
+            train_labels = inputs[:, :, -1:].to(device).squeeze(-1)
+
             optimizer.zero_grad()
             with torch.amp.autocast(device.type):
-                outputs = model(inputs)
+                outputs = model(train_inputs)
+                outputs = outputs.view(-1, output_size)
+                labels = train_labels.view(-1).long()
                 loss = criterion(outputs, labels)
+
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
@@ -90,25 +88,45 @@ def main(args):
     # Test
     model.eval()
     with torch.no_grad():
-        test_input, test_label = next(iter(test_dataloader))
-        test_input = test_input.to(device)
-        test_label = test_label.to(device).long().squeeze(-1)
-        logits = model(test_input).squeeze().cpu()
+        all_test_data = []
+        all_predicted = []
+        all_actual = []
+        for inputs in test_dataloader:
+           test_inputs = inputs[:, :, :-1].to(device)
+           test_labels = inputs[:, :, -1:].to(device).squeeze(-1)
+           logits = model(test_inputs).squeeze().cpu()
+           probabilities = torch.softmax(logits, dim=1)
+           predicted = torch.argmax(probabilities, dim=1)
+           test_labels = test_labels.cpu().long()
+
+           # append each data point to a single list
+           # flattening if necessary
+           for i in range(inputs.shape[1]): # iterate through window size (or time) dimension
+               all_test_data.append(test_inputs[0,i].cpu().numpy().tolist())
+               all_predicted.append(predicted[i].item())
+               all_actual.append(test_labels[0,i].item())
+
+    # Test
+    model.eval()
+    with torch.no_grad():
+        inputs = next(iter(test_dataloader))
+        test_inputs = inputs[:, :, :-1].to(device)
+        test_labels = inputs[:, :, -1:].to(device).squeeze(-1)
+        logits = model(test_inputs).squeeze().cpu()
         probabilities = torch.softmax(logits, dim=1)
         predicted = torch.argmax(probabilities, dim=1)
-        test_label = test_label.cpu()
+        test_label = test_labels.cpu()
 
-        test_data_list = test_input[0].cpu().numpy().tolist()
-        predicted_list = predicted.cpu().numpy().tolist()
+        test_data_list = test_inputs[0].cpu().numpy().tolist()
+        predicted_list = predicted.cpu().unsqueeze(-1).numpy().tolist()
         actual_list = test_label.cpu().numpy().tolist()
 
-        data = {'Test Data': test_data_list,
-                'Predicted': predicted_list,
-                'Actual': actual_list}
+        data = {'Test Data': all_test_data,
+                'Predicted': all_predicted,
+                'Actual': all_actual}
         df = pd.DataFrame(data)
         df.to_csv(args.test_results, index=False)
         print(f"Test results saved to {args.test_results}")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
