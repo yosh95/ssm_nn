@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import pdb
 import pandas as pd
 import torch
 import torch.nn as nn
@@ -14,17 +15,17 @@ from torch.utils.data import DataLoader
 def main(args):
     # Hyper parameters
     batch_size = 1
-    learning_rate = 0.0005
+    learning_rate = 0.01
     num_epochs = 200
     clip_value = 1.0
-    d_model = 16
-    d_state = 4
+    d_model = 8
+    d_state = 2
     expansion_factor = 2
     num_layers = 2
-    window_size = 100
+    window_size = 3
     stride = 1
     label_mode = 'all'
-    normalize = True
+    normalize = False
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Dataset instantiation
@@ -35,8 +36,6 @@ def main(args):
                                label_mode=label_mode,
                                normalize=normalize)
     test_dataset = CSVDataset(csv_file=args.test_data,
-                              window_size=window_size,
-                              stride=stride,
                               skip_header=True,
                               label_mode=label_mode,
                               normalize=normalize)
@@ -48,8 +47,10 @@ def main(args):
     test_dataloader = DataLoader(test_dataset,
                                  batch_size=batch_size,
                                  shuffle=False)
-    input_size = train_dataset.data.shape[2]
-    output_size = 1
+    input_size = train_dataset.data.shape[2] - 1
+    output_size = 2
+
+    #pdb.set_trace() # Keep this if debugging is needed
 
     # Model instantiation
     model = Model(d_model,
@@ -60,7 +61,7 @@ def main(args):
                   output_size).to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.8)
-    criterion = nn.MSELoss()
+    criterion = nn.CrossEntropyLoss()
 
     # Training
     scaler = torch.amp.GradScaler(device.type)
@@ -70,12 +71,11 @@ def main(args):
         epoch_loss = 0.0
         for i, (inputs, labels) in enumerate(train_dataloader):
             inputs = inputs.to(device)
-            labels = labels.to(device)
+            labels = labels.long().to(device).squeeze(-1)
             optimizer.zero_grad()
             with torch.amp.autocast(device.type):
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
-            loss.backward
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
@@ -92,10 +92,11 @@ def main(args):
     with torch.no_grad():
         test_input, test_label = next(iter(test_dataloader))
         test_input = test_input.to(device)
-        test_label = test_label.to(device)
-        predicted = model(test_input).squeeze().cpu()
-        predicted = torch.round(predicted)
-        test_label = test_label.squeeze().cpu()
+        test_label = test_label.to(device).long().squeeze(-1)
+        logits = model(test_input).squeeze().cpu()
+        probabilities = torch.softmax(logits, dim=1)
+        predicted = torch.argmax(probabilities, dim=1)
+        test_label = test_label.cpu()
 
         test_data_list = test_input[0].cpu().numpy().tolist()
         predicted_list = predicted.cpu().numpy().tolist()

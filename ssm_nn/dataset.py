@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 class CSVDataset(Dataset):
     def __init__(self,
                  csv_file,
-                 window_size,
+                 window_size=None,
                  stride=1,
                  skip_header=False,
                  label_mode='last',
@@ -38,6 +38,9 @@ class CSVDataset(Dataset):
 
         self.data = []
         self.labels = []
+
+        if window_size is None:
+            window_size = len(df)
 
         for i in range(0, len(df) - window_size + 1, stride):
             window_data = data_values[i:i + window_size]
