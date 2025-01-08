@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 import argparse
 
-from ssm_nn.csv_dataset import CSVDataset
+from ssm_nn.dataset import CSVDataset
 from ssm_nn.model import Model
 from torch.utils.data import DataLoader
 
