@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 
 import argparse
-import numpy as np
-import pandas as pd
-import pdb
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
-from ssm_nn.model import Model
 from torch.utils.data import Dataset, DataLoader
+from ssm_nn.model import Model
 
 
 class CSVDataset(Dataset):
@@ -19,7 +15,6 @@ class CSVDataset(Dataset):
                  window_size,
                  stride,
                  skip_header=False):
-
         self.csv_file = csv_file
         self.window_size = window_size
         self.stride = stride
@@ -28,32 +23,32 @@ class CSVDataset(Dataset):
         self.data = self._load_data()
 
     def _calculate_start_indices(self):
-
         with open(self.csv_file, 'r') as f:
             num_rows = sum(1 for _ in f)
             if self.skip_header:
                 num_rows -= 1
 
         start_indices = []
-
         for i in range(0, num_rows - self.window_size + 1, self.stride):
             start_indices.append(i)
-
         return start_indices
 
     def _load_data(self):
-        data = pd.read_csv(self.csv_file,
-                           header=0 if self.skip_header else None)
-        return data.values.astype(np.float32)
+        data = []
+        with open(self.csv_file, 'r') as f:
+            if self.skip_header:
+                next(f)
+            for line in f:
+                row = [float(x) for x in line.strip().split(',')]
+                data.append(row)
+        return data
 
     def __len__(self):
         return len(self.start_indices)
 
     def __getitem__(self, idx):
-
         start_index = self.start_indices[idx]
         window_data = self.data[start_index:start_index + self.window_size]
-
         return torch.tensor(window_data, dtype=torch.float32)
 
 
@@ -93,7 +88,7 @@ def main(args):
                                  batch_size=batch_size,
                                  shuffle=False)
 
-    input_size = torch.numel(train_dataset.__getitem__(1)[0]) - 1
+    input_size = len(train_dataset[0][0]) - 1
     output_size = 2
 
     # Model instantiation
@@ -135,25 +130,23 @@ def main(args):
     # Test
     model.eval()
     with torch.no_grad():
+        print("Test Inputs | Predicted | True Labels")
         for inputs in test_dataloader:
             test_inputs = inputs[:, :, :-1].to(device)
-            test_labels = inputs[:, :, -1:].to(device).squeeze(-1)
+            test_labels = inputs[:, :, -1:].squeeze(-1)
             logits = model(test_inputs).squeeze().cpu()
             probabilities = torch.softmax(logits, dim=1)
             predicted = torch.argmax(probabilities, dim=1)
-            test_labels = test_labels.cpu().long()
+            test_labels = test_labels.long()
 
-            test_inputs_np = test_inputs.cpu().squeeze(0).numpy()
-            predicted_np = predicted.numpy().reshape(-1, 1)
-            test_labels_np = test_labels.numpy().reshape(-1, 1)
+            test_inputs_list = test_inputs.cpu().squeeze(0).tolist()
+            predicted_list = predicted.tolist()
+            test_labels_list = test_labels.squeeze(0).tolist()
 
-            combined_data = np.concatenate((test_inputs_np,
-                                            predicted_np,
-                                            test_labels_np), axis=1)
-
-            print("Test Inputs | Predicted | True Labels")
-            for row in combined_data:
-                print(row)
+            for i in range(len(test_inputs_list)):
+                row_str = f"{test_inputs_list[i]} | " + \
+                          f"{predicted_list[i]} | {test_labels_list[i]}"
+                print(row_str)
 
 
 if __name__ == "__main__":
