@@ -17,5 +17,3 @@ pytest = "^7.2.1"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.poetry.packages]
-include = [{from = ".", include = "ssm_nn"}]
