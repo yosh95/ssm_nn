@@ -31,13 +31,14 @@ class SSM(nn.Module):
 
         h = torch.zeros(batch_size, self.d_state, 1, device=x.device)
 
-        output = []
+        h_seq = []
         for t in range(seq_len):
-            h = torch.matmul(A[:, t, :, :], h) + \
-                    torch.matmul(B[:, t, :, :], x[:, t, :].unsqueeze(-1))
+            h = torch.matmul(A[:, t], h) + \
+                torch.matmul(B[:, t], x[:, t].unsqueeze(-1))
+            h_seq.append(h)
 
-            y = torch.matmul(C[:, t, :, :].transpose(1, 2), h)
-            output.append(y.squeeze(-1))
+        h_seq = torch.stack(h_seq, dim=1)
+        output = torch.matmul(C.transpose(-2, -1), h_seq)
 
-        output = torch.stack(output, dim=1)
+        output = output.squeeze(-1)
         return output
