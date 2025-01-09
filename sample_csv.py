@@ -85,8 +85,10 @@ def train_model(model, optimizer, scheduler, criterion, train_dataloader,
                 scheduler.step()
 
                 epoch_loss += loss.item()
-            print(f"Epoch: {epoch+1}/{num_epochs}, " +
-                  f"Loss: {epoch_loss/len(train_dataloader):.4f}")
+
+            if (epoch + 1) % 10 == 0:
+                print(f"Epoch: {epoch+1}/{num_epochs}, " +
+                      f"Loss: {epoch_loss/len(train_dataloader):.4f}")
         if prof:
             print(prof.key_averages().table(
                   sort_by="cuda_time_total,cpu_time_total", row_limit=10))
@@ -158,7 +160,7 @@ def main(args):
                   input_size,
                   output_size).to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.8)
     criterion = nn.CrossEntropyLoss()
 
