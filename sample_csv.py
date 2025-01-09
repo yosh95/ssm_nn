@@ -2,7 +2,9 @@
 
 import argparse
 import os
+import json
 import torch
+import torch.amp as amp
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
@@ -53,20 +55,71 @@ class CSVDataset(Dataset):
         return torch.tensor(window_data, dtype=torch.float32)
 
 
+def train_model(model, optimizer, scheduler, criterion, train_dataloader,
+                num_epochs, device, output_size, use_profiler):
+
+    scaler = amp.GradScaler()
+    print(f"Number of parameters: {model.count_parameters()}")
+
+    def _training_loop(prof=None):
+        for epoch in range(num_epochs):
+            model.train()
+            epoch_loss = 0.0
+            for i, inputs in enumerate(train_dataloader):
+                train_inputs = inputs[:, :, :-1].to(device, non_blocking=True)
+                train_labels = inputs[:, :, -1:].to(
+                    device,
+                    non_blocking=True).squeeze(-1)
+
+                optimizer.zero_grad()
+                with amp.autocast(device_type=device.type):
+                    outputs = model(train_inputs)
+                    outputs = outputs.view(-1, output_size)
+                    labels = train_labels.view(-1).long()
+                    loss = criterion(outputs, labels)
+
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+
+                scheduler.step()
+
+                epoch_loss += loss.item()
+            print(f"Epoch: {epoch+1}/{num_epochs}, " +
+                  f"Loss: {epoch_loss/len(train_dataloader):.4f}")
+        if prof:
+            print(prof.key_averages().table(
+                  sort_by="cuda_time_total,cpu_time_total", row_limit=10))
+
+    if use_profiler:
+        with torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA
+            ],
+            record_shapes=True,
+            with_stack=True
+        ) as prof:
+            _training_loop(prof)
+    else:
+        _training_loop()
+
+
 def main(args):
+    # Load Hyperparameters
+    with open(args.hyperparameter_file, "r") as f:
+        hyperparameters = json.load(f)
 
-    # Hyper parameters
-    window_size = 200
-    stride = 10
-    batch_size = 64
-
-    learning_rate = 0.001
-    num_epochs = 1000
-
-    d_model = 16
-    d_state = 2
-    expansion_factor = 2
-    num_layers = 2
+    window_size = hyperparameters["window_size"]
+    stride = hyperparameters["stride"]
+    batch_size = hyperparameters["batch_size"]
+    learning_rate = hyperparameters["learning_rate"]
+    num_epochs = hyperparameters["num_epochs"]
+    d_model = hyperparameters["d_model"]
+    d_state = hyperparameters["d_state"]
+    expansion_factor = hyperparameters["expansion_factor"]
+    num_layers = hyperparameters["num_layers"]
+    use_profiler = hyperparameters.get("use_profiler", False)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Use {device}")
@@ -110,35 +163,15 @@ def main(args):
     criterion = nn.CrossEntropyLoss()
 
     # Training
-    print(f"Number of parameters: {model.count_parameters()}")
-    for epoch in range(num_epochs):
-        model.train()
-        epoch_loss = 0.0
-        for i, inputs in enumerate(train_dataloader):
-            train_inputs = inputs[:, :, :-1].to(device)
-            train_labels = inputs[:, :, -1:].to(device).squeeze(-1)
-
-            optimizer.zero_grad()
-            outputs = model(train_inputs)
-            outputs = outputs.view(-1, output_size)
-            labels = train_labels.view(-1).long()
-            loss = criterion(outputs, labels)
-
-            loss.backward()
-            optimizer.step()
-            scheduler.step()
-
-            epoch_loss += loss.item()
-
-        print(f"Epoch: {epoch+1}/{num_epochs}, " +
-              f"Loss: {epoch_loss/len(train_dataloader):.4f}")
+    train_model(model, optimizer, scheduler, criterion, train_dataloader,
+                num_epochs, device, output_size, use_profiler)
 
     # Test
     model.eval()
     with torch.no_grad(), open(args.output_file, 'w') as f:
         f.write("Test Inputs | Predicted | True Labels\n")
         for inputs in test_dataloader:
-            test_inputs = inputs[:, :, :-1].to(device)
+            test_inputs = inputs[:, :, :-1].to(device, non_blocking=True)
             test_labels = inputs[:, :, -1:].squeeze(-1).cpu().long()
             logits = model(test_inputs).cpu()
             probabilities = torch.softmax(logits, dim=2)
@@ -169,6 +202,10 @@ if __name__ == "__main__":
                         type=str,
                         default="test_results.txt",
                         help="Path to the output file for test results.")
+    parser.add_argument("--hyperparameter_file",
+                        type=str,
+                        default="hyperparameters.json",
+                        help="Path to the hyperparameter JSON file.")
 
     args = parser.parse_args()
     main(args)
