@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "ssm-nn" # パッケージ名
+version = "0.1.0" # バージョン
+description = "SSM neural network package"
+authors = ["Yoshihiro Ando"]
+license = "MIT"
+
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.2.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.packages]
+include = [{from = ".", include = "ssm_nn"}]
