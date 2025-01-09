@@ -60,7 +60,7 @@ def main(args):
     batch_size = 64
 
     learning_rate = 0.001
-    num_epochs = 100
+    num_epochs = 300
 
     d_model = 16
     d_state = 2
