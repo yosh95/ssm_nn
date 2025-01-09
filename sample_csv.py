@@ -56,8 +56,8 @@ def main(args):
 
     # Hyper parameters
     window_size = 200
-    stride = 1
-    batch_size = 128
+    stride = 100
+    batch_size = 64
 
     learning_rate = 0.001
     num_epochs = 100
@@ -74,11 +74,13 @@ def main(args):
     train_dataset = CSVDataset(csv_file=args.train_data,
                                window_size=window_size,
                                stride=stride,
+                               pin_memory=True,
                                skip_header=True)
 
     test_dataset = CSVDataset(csv_file=args.test_data,
                               window_size=window_size,
                               stride=window_size,
+                              pin_memory=True,
                               skip_header=True)
 
     train_dataloader = DataLoader(train_dataset,
