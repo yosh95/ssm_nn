@@ -57,7 +57,7 @@ def main(args):
     # Hyper parameters
     window_size = 100
     stride = 50
-    batch_size = 1
+    batch_size = 10
 
     learning_rate = 0.001
     num_epochs = 100
@@ -134,20 +134,19 @@ def main(args):
         print("Test Inputs | Predicted | True Labels")
         for inputs in test_dataloader:
             test_inputs = inputs[:, :, :-1].to(device)
-            test_labels = inputs[:, :, -1:].squeeze(-1)
-            logits = model(test_inputs).squeeze().cpu()
-            probabilities = torch.softmax(logits, dim=1)
-            predicted = torch.argmax(probabilities, dim=1)
-            test_labels = test_labels.long()
+            test_labels = inputs[:, :, -1:].squeeze(-1).cpu().long()
+            logits = model(test_inputs).cpu()
+            probabilities = torch.softmax(logits, dim=2)
+            predicted = torch.argmax(probabilities, dim=2)
 
-            test_inputs_list = test_inputs.cpu().squeeze(0).tolist()
-            predicted_list = predicted.tolist()
-            test_labels_list = test_labels.squeeze(0).tolist()
+            batch_size = test_inputs.shape[0]
 
-            for i in range(len(test_inputs_list)):
-                row_str = f"{test_inputs_list[i]} | " + \
-                          f"{predicted_list[i]} | {test_labels_list[i]}"
-                print(row_str)
+            for batch_idx in range(batch_size):
+              for i in range(test_inputs.shape[1]):
+                  row_str = f"{test_inputs[batch_idx][i].tolist()} | " + \
+                            f"{predicted[batch_idx][i].item()} | {test_labels[batch_idx][i].item()}"
+                  print(row_str)
+
 
 
 if __name__ == "__main__":
