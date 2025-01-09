@@ -68,6 +68,7 @@ def main(args):
     num_layers = 2
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Use {device}")
 
     # Dataset instantiation
     train_dataset = CSVDataset(csv_file=args.train_data,
