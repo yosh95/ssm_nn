@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -83,11 +84,13 @@ def main(args):
 
     train_dataloader = DataLoader(train_dataset,
                                   batch_size=batch_size,
+                                  num_workers=min(os.cpu_count(), 4),
                                   pin_memory=True,
                                   shuffle=True)
 
     test_dataloader = DataLoader(test_dataset,
                                  batch_size=batch_size,
+                                 num_workers=min(os.cpu_count(), 4),
                                  pin_memory=True,
                                  shuffle=False)
 
