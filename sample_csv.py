@@ -56,11 +56,11 @@ def main(args):
 
     # Hyper parameters
     window_size = 200
-    stride = 100
+    stride = 10
     batch_size = 64
 
     learning_rate = 0.001
-    num_epochs = 300
+    num_epochs = 1000
 
     d_model = 16
     d_state = 2
