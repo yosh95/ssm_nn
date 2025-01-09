@@ -55,9 +55,9 @@ class CSVDataset(Dataset):
 def main(args):
 
     # Hyper parameters
-    window_size = 100
-    stride = 50
-    batch_size = 10
+    window_size = 200
+    stride = 1
+    batch_size = 128
 
     learning_rate = 0.001
     num_epochs = 100
