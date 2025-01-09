@@ -130,8 +130,8 @@ def main(args):
 
     # Test
     model.eval()
-    with torch.no_grad():
-        print("Test Inputs | Predicted | True Labels")
+    with torch.no_grad(), open(args.output_file, 'w') as f:
+        f.write("Test Inputs | Predicted | True Labels\n")
         for inputs in test_dataloader:
             test_inputs = inputs[:, :, :-1].to(device)
             test_labels = inputs[:, :, -1:].squeeze(-1).cpu().long()
@@ -142,11 +142,13 @@ def main(args):
             batch_size = test_inputs.shape[0]
 
             for batch_idx in range(batch_size):
-              for i in range(test_inputs.shape[1]):
-                  row_str = f"{test_inputs[batch_idx][i].tolist()} | " + \
-                            f"{predicted[batch_idx][i].item()} | {test_labels[batch_idx][i].item()}"
-                  print(row_str)
+                for i in range(test_inputs.shape[1]):
+                    row_str = f"{test_inputs[batch_idx][i].tolist()} | " + \
+                              f"{predicted[batch_idx][i].item()} | " + \
+                              f"{test_labels[batch_idx][i].item()}"
+                    f.write(row_str + "\n")
 
+    print(f"Test results saved to: {args.output_file}")
 
 
 if __name__ == "__main__":
@@ -158,5 +160,10 @@ if __name__ == "__main__":
     parser.add_argument("test_data",
                         type=str,
                         help="Path to the test data CSV file.")
+    parser.add_argument("--output_file",
+                        type=str,
+                        default="test_results.txt",
+                        help="Path to the output file for test results.")
+
     args = parser.parse_args()
     main(args)
