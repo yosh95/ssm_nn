@@ -58,7 +58,7 @@ class CSVDataset(Dataset):
 def train_model(model, optimizer, scheduler, criterion, train_dataloader,
                 num_epochs, device, output_size, use_profiler):
 
-    scaler = amp.GradScaler()
+    scaler = amp.GradScaler(enabled=(device.type == 'cuda'))
     print(f"Number of parameters: {model.count_parameters()}")
 
     def _training_loop():
@@ -72,7 +72,8 @@ def train_model(model, optimizer, scheduler, criterion, train_dataloader,
                     non_blocking=True).squeeze(-1)
 
                 optimizer.zero_grad()
-                with amp.autocast(device_type=device.type):
+                with amp.autocast(device_type=device.type,
+                                  enabled=(device.type == 'cuda')):
                     outputs = model(train_inputs)
                     outputs = outputs.view(-1, output_size)
                     labels = train_labels.view(-1).long()
@@ -120,6 +121,7 @@ def main(args):
     expansion_factor = hyperparameters["expansion_factor"]
     num_layers = hyperparameters["num_layers"]
     use_profiler = hyperparameters.get("use_profiler", False)
+    lr_min = hyperparameters.get("lr_min", 0.00001)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Use {device}")
@@ -159,7 +161,14 @@ def main(args):
                   output_size).to(device)
 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.8)
+    #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=lr_step_size, gamma=lr_gamma)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer,
+                                                     T_max=num_epochs,
+                                                     eta_min=lr_min)
+    #scheduler = optim.lr_scheduler.OneCycleLR(optimizer,
+    #                                          max_lr=learning_rate,
+    #                                          epochs=num_epochs,
+    #                                          steps_per_epoch=len(train_dataloader))
     criterion = nn.CrossEntropyLoss()
 
     # Training
