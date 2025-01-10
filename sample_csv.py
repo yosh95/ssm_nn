@@ -115,6 +115,29 @@ def train_model(model,
         _training_loop()
 
 
+def test_model(model, test_dataloader, device, result_file):
+    model.eval()
+    with torch.no_grad(), open(result_file, 'w') as f:
+        f.write("Test Inputs | Predicted | True Labels\n")
+        for inputs in test_dataloader:
+            test_inputs = inputs[:, :, :-1].to(device, non_blocking=True)
+            test_labels = inputs[:, :, -1:].squeeze(-1).cpu().long()
+            logits = model(test_inputs).cpu()
+            probabilities = torch.softmax(logits, dim=2)
+            predicted = torch.argmax(probabilities, dim=2)
+
+            batch_size = test_inputs.shape[0]
+
+            for batch_idx in range(batch_size):
+                for i in range(test_inputs.shape[1]):
+                    row_str = f"{test_inputs[batch_idx][i].tolist()} | " + \
+                              f"{predicted[batch_idx][i].item()} | " + \
+                              f"{test_labels[batch_idx][i].item()}"
+                    f.write(row_str + "\n")
+
+    print(f"Test results saved to: {result_file}")
+
+
 def main(args):
     # Load Hyperparameters
     with open(args.hyperparameter_file, "r") as f:
@@ -171,51 +194,47 @@ def main(args):
                   output_size,
                   conv_kernel).to(device)
 
-    optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer,
-                                                     T_max=num_epochs,
-                                                     eta_min=lr_min)
+    if args.model_path:
+        print(f"Loading model from: {args.model_path}")
+        model.load_state_dict(torch.load(args.model_path,
+                                         weights_only=True,
+                                         map_location=device))
+    else:
+        optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer,
+                                                         T_max=num_epochs,
+                                                         eta_min=lr_min)
 
-    criterion = nn.CrossEntropyLoss()
+        criterion = nn.CrossEntropyLoss()
 
-    # Training
-    train_model(model, optimizer, scheduler, criterion, train_dataloader,
-                num_epochs, device, output_size, use_profiler)
+        # Training
+        train_model(model, optimizer, scheduler, criterion, train_dataloader,
+                    num_epochs, device, output_size, use_profiler)
+
+        # Save Model
+        if args.output_model_path:
+            print(f"Saving model to: {args.output_model_path}")
+            torch.save(model.state_dict(), args.output_model_path)
 
     # Test
-    model.eval()
-    with torch.no_grad(), open(args.output_file, 'w') as f:
-        f.write("Test Inputs | Predicted | True Labels\n")
-        for inputs in test_dataloader:
-            test_inputs = inputs[:, :, :-1].to(device, non_blocking=True)
-            test_labels = inputs[:, :, -1:].squeeze(-1).cpu().long()
-            logits = model(test_inputs).cpu()
-            probabilities = torch.softmax(logits, dim=2)
-            predicted = torch.argmax(probabilities, dim=2)
-
-            batch_size = test_inputs.shape[0]
-
-            for batch_idx in range(batch_size):
-                for i in range(test_inputs.shape[1]):
-                    row_str = f"{test_inputs[batch_idx][i].tolist()} | " + \
-                              f"{predicted[batch_idx][i].item()} | " + \
-                              f"{test_labels[batch_idx][i].item()}"
-                    f.write(row_str + "\n")
-
-    print(f"Test results saved to: {args.output_file}")
+    test_model(model, test_dataloader, device, args.result_file)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Train and test an SSM-NN model.")
-    parser.add_argument("train_data",
+    parser.add_argument("-t",
+                        "--train_data",
                         type=str,
+                        default="train_data.csv",
                         help="Path to the training data CSV file.")
-    parser.add_argument("test_data",
+    parser.add_argument("-e",
+                        "--test_data",
                         type=str,
+                        default="test_data.csv",
                         help="Path to the test data CSV file.")
-    parser.add_argument("-o",
-                        "--output_file",
+    parser.add_argument("-r",
+                        "--result_file",
                         type=str,
                         default="test_results.txt",
                         help="Path to the output file for test results.")
@@ -224,6 +243,16 @@ if __name__ == "__main__":
                         type=str,
                         default="hyperparameters.json",
                         help="Path to the hyperparameter JSON file.")
+    parser.add_argument("-o",
+                        "--output_model_path",
+                        type=str,
+                        default="model.pth",
+                        help="Path to save the trained model.")
+    parser.add_argument("-m",
+                        "--model_path",
+                        type=str,
+                        default=None,
+                        help="Path to a pre-trained model to load and test.")
 
     args = parser.parse_args()
     main(args)
