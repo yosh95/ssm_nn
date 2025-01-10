@@ -1,6 +1,6 @@
 {
-   "window_size": 100,
-    "stride": 10,
+   "window_size": 200,
+    "stride": 50,
     "batch_size": 64,
     "learning_rate": 0.001,
     "num_epochs": 500,
@@ -9,5 +9,6 @@
     "expansion_factor": 2,
     "num_layers": 2,
     "use_profiler": false,
-    "lr_min": 0.00001
+    "lr_min": 0.00001,
+    "conv_kernel": 3
 }
