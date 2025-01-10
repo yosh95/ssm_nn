@@ -10,11 +10,12 @@ class Model(nn.Module):
                  expansion_factor,
                  num_layers,
                  input_size,
-                 output_size):
+                 output_size,
+                 conv_kernel=3):
         super().__init__()
         self.d_model = d_model
         self.layers = nn.ModuleList([
-            Block(d_model, d_state, expansion_factor)
+            Block(d_model, d_state, expansion_factor, conv_kernel)
             for _ in range(num_layers)
         ])
         self.norm = nn.LayerNorm(d_model)

@@ -55,8 +55,15 @@ class CSVDataset(Dataset):
         return torch.tensor(window_data, dtype=torch.float32)
 
 
-def train_model(model, optimizer, scheduler, criterion, train_dataloader,
-                num_epochs, device, output_size, use_profiler):
+def train_model(model,
+                optimizer,
+                scheduler,
+                criterion,
+                train_dataloader,
+                num_epochs,
+                device,
+                output_size,
+                use_profiler):
 
     scaler = amp.GradScaler(enabled=(device.type == 'cuda'))
     print(f"Number of parameters: {model.count_parameters()}")
@@ -118,6 +125,7 @@ def main(args):
     num_epochs = hyperparameters["num_epochs"]
     d_model = hyperparameters["d_model"]
     d_state = hyperparameters["d_state"]
+    conv_kernel = hyperparameters["conv_kernel"]
     expansion_factor = hyperparameters["expansion_factor"]
     num_layers = hyperparameters["num_layers"]
     use_profiler = hyperparameters.get("use_profiler", False)
@@ -158,17 +166,14 @@ def main(args):
                   expansion_factor,
                   num_layers,
                   input_size,
-                  output_size).to(device)
+                  output_size,
+                  conv_kernel).to(device)
 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
-    #scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=lr_step_size, gamma=lr_gamma)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer,
                                                      T_max=num_epochs,
                                                      eta_min=lr_min)
-    #scheduler = optim.lr_scheduler.OneCycleLR(optimizer,
-    #                                          max_lr=learning_rate,
-    #                                          epochs=num_epochs,
-    #                                          steps_per_epoch=len(train_dataloader))
+
     criterion = nn.CrossEntropyLoss()
 
     # Training

@@ -5,6 +5,7 @@ class Selection(nn.Module):
     def __init__(self, d_in, d_out):
         super().__init__()
         self.linear = nn.Linear(d_in, d_out)
+        self.act = nn.SiLU()
         self._reset_parameters()
 
     def _reset_parameters(self):
@@ -15,4 +16,4 @@ class Selection(nn.Module):
                 nn.init.zeros_(p)
 
     def forward(self, x):
-        return self.linear(x)
+        return self.act(self.linear(x))
