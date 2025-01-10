@@ -12,7 +12,7 @@ class Block(nn.Module):
         self.input_proj = nn.Linear(d_model, self.d_inner)
         self.ssm = SSM(self.d_inner, d_state)
         self.output_proj = nn.Linear(self.d_inner, d_model)
-        self.act_f = nn.SELU()
+        self.act_f = nn.SiLU()
 
     def forward(self, x):
         x = self.input_proj(x)
