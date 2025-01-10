@@ -86,9 +86,8 @@ def train_model(model, optimizer, scheduler, criterion, train_dataloader,
 
                 epoch_loss += loss.item()
 
-            if (epoch + 1) % 10 == 0:
-                print(f"Epoch: {epoch+1}/{num_epochs}, " +
-                      f"Loss: {epoch_loss/len(train_dataloader):.4f}")
+            print(f"Epoch: {epoch+1}/{num_epochs}, " +
+                  f"Loss: {epoch_loss/len(train_dataloader):.4f}")
 
     if use_profiler:
         with torch.profiler.profile(
