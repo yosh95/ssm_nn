@@ -32,6 +32,8 @@ class CSVDataset(Dataset):
                 num_rows -= 1
 
         start_indices = []
+        if num_rows < self.window_size:
+            self.window_size = num_rows
         for i in range(0, num_rows - self.window_size + 1, self.stride):
             start_indices.append(i)
         return start_indices

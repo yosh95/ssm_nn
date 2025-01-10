@@ -24,12 +24,16 @@ class SSM(nn.Module):
                                   self.d_state,
                                   self.d_state)
         B = self.select_B(x).view(batch_size,
-                                  seq_len, self.d_state, d_model)
+                                  seq_len,
+                                  self.d_state,
+                                  d_model)
         C = self.select_C(x).view(batch_size,
                                   seq_len,
                                   self.d_state,
                                   d_model)
-        log_D = self.select_log_D(x).view(batch_size, seq_len, self.d_state)
+        log_D = self.select_log_D(x).view(batch_size,
+                                          seq_len,
+                                          self.d_state)
         delta = self.select_delta(x)
 
         delta = F.softplus(delta)
@@ -40,7 +44,10 @@ class SSM(nn.Module):
 
     def scan(self, x, A, B, C, delta):
         batch_size, seq_len, d_model = x.shape
-        h = torch.zeros(batch_size, self.d_state, 1, device=x.device)
+        h = torch.zeros(batch_size,
+                        self.d_state,
+                        1,
+                        device=x.device)
 
         h_seq = []
         for t in range(seq_len):
