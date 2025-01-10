@@ -61,7 +61,7 @@ def train_model(model, optimizer, scheduler, criterion, train_dataloader,
     scaler = amp.GradScaler()
     print(f"Number of parameters: {model.count_parameters()}")
 
-    def _training_loop(prof=None):
+    def _training_loop():
         for epoch in range(num_epochs):
             model.train()
             epoch_loss = 0.0
@@ -89,9 +89,6 @@ def train_model(model, optimizer, scheduler, criterion, train_dataloader,
             if (epoch + 1) % 10 == 0:
                 print(f"Epoch: {epoch+1}/{num_epochs}, " +
                       f"Loss: {epoch_loss/len(train_dataloader):.4f}")
-        if prof:
-            print(prof.key_averages().table(
-                  sort_by="cuda_time_total,cpu_time_total", row_limit=10))
 
     if use_profiler:
         with torch.profiler.profile(
@@ -103,6 +100,8 @@ def train_model(model, optimizer, scheduler, criterion, train_dataloader,
             with_stack=True
         ) as prof:
             _training_loop(prof)
+            print(prof.key_averages().table(
+                  sort_by="cuda_time_total,cpu_time_total", row_limit=10))
     else:
         _training_loop()
 
@@ -200,11 +199,13 @@ if __name__ == "__main__":
     parser.add_argument("test_data",
                         type=str,
                         help="Path to the test data CSV file.")
-    parser.add_argument("--output_file",
+    parser.add_argument("-o",
+                        "--output_file",
                         type=str,
                         default="test_results.txt",
                         help="Path to the output file for test results.")
-    parser.add_argument("--hyperparameter_file",
+    parser.add_argument("-p",
+                        "--hyperparameter_file",
                         type=str,
                         default="hyperparameters.json",
                         help="Path to the hyperparameter JSON file.")
