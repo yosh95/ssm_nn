@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from ssm_nn.selection import Selection
 
 
@@ -14,7 +15,7 @@ class SSM(nn.Module):
         self.select_B = Selection(d_model, d_state * d_model)
         self.select_C = Selection(d_model, d_state * d_model)
         self.select_log_D = Selection(d_model, d_state)
-        self.select_delta = Selection(d_model, d_model)
+        self.select_delta = Selection(d_model, 1)
 
     def forward(self, x):
         batch_size, seq_len, d_model = x.shape
@@ -37,22 +38,21 @@ class SSM(nn.Module):
         delta = self.select_delta(x)
 
         delta = F.softplus(delta)
+        A = A * delta.unsqueeze(-1)
+        B = B * delta.unsqueeze(-1)
         A = A * torch.exp(log_D).unsqueeze(-1)
 
-        output = self.scan(x, A, B, C, delta)
+        output = self.scan(x, A, B, C)
         return output
 
-    def scan(self, x, A, B, C, delta):
+    def scan(self, x, A, B, C):
         batch_size, seq_len, d_model = x.shape
-        h = torch.zeros(batch_size,
-                        self.d_state,
-                        1,
-                        device=x.device)
+        h = torch.zeros(batch_size, self.d_state, 1, device=x.device)
 
         h_seq = []
         for t in range(seq_len):
             h = torch.matmul(A[:, t], h) + \
-                torch.matmul(B[:, t], x[:, t].unsqueeze(-1))
+                            torch.matmul(B[:, t], x[:, t].unsqueeze(-1))
             h_seq.append(h)
 
         h_seq = torch.stack(h_seq, dim=1)
