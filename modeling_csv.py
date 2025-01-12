@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
 import argparse
-import os
 import json
+import os
+import pandas as pd
 import torch
 import torch.amp as amp
 import torch.nn as nn
@@ -16,37 +17,27 @@ class CSVDataset(Dataset):
     def __init__(self,
                  csv_file,
                  window_size,
-                 stride,
-                 skip_header=False):
+                 stride):
         self.csv_file = csv_file
         self.window_size = window_size
         self.stride = stride
-        self.skip_header = skip_header
-        self.start_indices = self._calculate_start_indices()
         self.data = self._load_data()
+        self.start_indices = self._calculate_start_indices()
+
+    def _load_data(self):
+        df = pd.read_csv(self.csv_file)
+
+        self.max_label = df.iloc[:, -1].astype(float).max()
+        return df.astype(float).values
 
     def _calculate_start_indices(self):
-        with open(self.csv_file, 'r') as f:
-            num_rows = sum(1 for _ in f)
-            if self.skip_header:
-                num_rows -= 1
-
-        start_indices = []
+        num_rows = len(self.data)
         if num_rows < self.window_size:
             self.window_size = num_rows
+        start_indices = []
         for i in range(0, num_rows - self.window_size + 1, self.stride):
             start_indices.append(i)
         return start_indices
-
-    def _load_data(self):
-        data = []
-        with open(self.csv_file, 'r') as f:
-            if self.skip_header:
-                next(f)
-            for line in f:
-                row = [float(x) for x in line.strip().split(',')]
-                data.append(row)
-        return data
 
     def __len__(self):
         return len(self.start_indices)
@@ -162,13 +153,11 @@ def main(args):
     # Dataset instantiation
     train_dataset = CSVDataset(csv_file=args.train_data,
                                window_size=window_size,
-                               stride=stride,
-                               skip_header=True)
+                               stride=stride)
 
     test_dataset = CSVDataset(csv_file=args.test_data,
                               window_size=window_size,
-                              stride=window_size,
-                              skip_header=True)
+                              stride=window_size)
 
     train_dataloader = DataLoader(train_dataset,
                                   batch_size=batch_size,
@@ -183,7 +172,7 @@ def main(args):
                                  shuffle=False)
 
     input_size = len(train_dataset[0][0]) - 1
-    output_size = 2
+    output_size = int(round(train_dataset.max_label)) + 1
 
     # Model instantiation
     model = Model(d_model,
