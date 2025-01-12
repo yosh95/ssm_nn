@@ -62,8 +62,8 @@ def normalize_csv_with_torch_label(csv_path,
             print(f"Error during tensor creation: {e}")
             return None
 
-    except FileNotFoundError:
-        print(f"Error: '{csv_path}' is not found.")
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
         return None
     except Exception as e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
