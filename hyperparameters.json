@@ -1,6 +1,6 @@
 {
-    "window_size": 100,
-    "stride": 10,
+    "window_size": 200,
+    "stride": 100,
     "batch_size": 32,
     "learning_rate": 0.001,
     "num_epochs": 500,
