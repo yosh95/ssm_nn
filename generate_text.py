@@ -99,7 +99,7 @@ def main():
             self.seq_len = seq_len
 
             self.sequences = []
-            for i in range(0, len(self.ids) - seq_len, 1):
+            for i in range(0, len(self.ids) - seq_len, seq_len):
                 self.sequences.append(self.ids[i: i + seq_len + 1])
 
         def __len__(self):
