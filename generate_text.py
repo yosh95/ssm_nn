@@ -8,125 +8,209 @@ from torch.utils.data import Dataset, DataLoader
 from collections import Counter
 from ssm_nn.bpe import BPE
 from ssm_nn.model import Model
+import argparse
 
 
-with open("text_data.txt", "r") as f:
-    text = f.read().strip()
+def main():
+    parser = argparse.ArgumentParser(
+            description="Train and generate text with SSM.")
+    parser.add_argument("text_file", type=str, help="Path to the text file.")
+    parser.add_argument("--start_text",
+                        type=str,
+                        default="",
+                        help="Starting text for generation.")
+    parser.add_argument("--vocab_size",
+                        type=int,
+                        default=3000,
+                        help="Size of vocabulary.")
+    parser.add_argument("--seq_len",
+                        type=int,
+                        default=64,
+                        help="Sequence Length.")
+    parser.add_argument("--batch_size",
+                        type=int,
+                        default=32,
+                        help="Batch Size.")
+    parser.add_argument("--d_model",
+                        type=int,
+                        default=32,
+                        help="Model Dimension.")
+    parser.add_argument("--d_state",
+                        type=int,
+                        default=4,
+                        help="State Dimension.")
+    parser.add_argument("--expansion_factor",
+                        type=int,
+                        default=2,
+                        help="Expansion Factor.")
+    parser.add_argument("--num_layers",
+                        type=int,
+                        default=2,
+                        help="Number of Layers.")
+    parser.add_argument("--conv_kernel",
+                        type=int,
+                        default=3,
+                        help="Convolution Kernel size.")
+    parser.add_argument("--epochs",
+                        type=int,
+                        default=100,
+                        help="Number of epochs.")
+    parser.add_argument("--lr",
+                        type=float,
+                        default=0.001,
+                        help="Learning Rate.")
+    parser.add_argument("--max_length",
+                        type=int,
+                        default=100,
+                        help="Maximum Length for text generation.")
+    parser.add_argument("--temperature",
+                        type=float,
+                        default=1.0,
+                        help="Temperature for text generation.")
+    parser.add_argument("--output_model",
+                        type=str,
+                        default="model.pth",
+                        help="Path to save trained model.")
+    parser.add_argument("--load_model",
+                        type=str,
+                        default=None,
+                        help="Path to load a pre-trained model.")
+    args = parser.parse_args()
 
-words = Counter(text.split())
+    with open(args.text_file, "r") as f:
+        text = f.read().strip()
 
-vocab_size = 3000
-bpe = BPE(vocab_size=vocab_size)
-bpe.learn_merges(words)
+    words = Counter(text.split())
 
-tokens = bpe.tokenize(text)
+    vocab_size = args.vocab_size
+    bpe = BPE(vocab_size=vocab_size)
+    bpe.learn_merges(words)
+
+    tokens = bpe.tokenize(text)
+
+    class TextDataset(Dataset):
+        def __init__(self, tokens, vocab, seq_len):
+            self.tokens = tokens
+            self.vocab = list(vocab)
+            self.vocab_to_id = {token: id for id,
+                                token in enumerate(self.vocab)}
+            self.ids = [self.vocab_to_id.get(token, 0)
+                        for token in self.tokens]
+            self.seq_len = seq_len
+
+            self.sequences = []
+            for i in range(0, len(self.ids) - seq_len, 1):
+                self.sequences.append(self.ids[i: i + seq_len + 1])
+
+        def __len__(self):
+            return len(self.sequences)
+
+        def __getitem__(self, idx):
+            sequence = self.sequences[idx]
+            return torch.tensor(
+                    sequence[:-1],
+                    dtype=torch.long), torch.tensor(sequence[1:],
+                                                    dtype=torch.long)
+
+    seq_len = args.seq_len
+    dataset = TextDataset(tokens, bpe.vocab, seq_len)
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+
+    d_model = args.d_model
+    d_state = args.d_state
+    expansion_factor = args.expansion_factor
+    num_layers = args.num_layers
+    input_size = len(bpe.vocab)
+    output_size = len(bpe.vocab)
+    conv_kernel = args.conv_kernel
+
+    model = Model(d_model,
+                  d_state,
+                  expansion_factor,
+                  num_layers,
+                  input_size,
+                  output_size,
+                  conv_kernel)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"device: {device.type}")
+    model.to(device)
+
+    if args.load_model:
+        try:
+            model.load_state_dict(torch.load(args.load_model,
+                                             map_location=device))
+            print(f"Loaded model from {args.load_model}")
+        except FileNotFoundError:
+            print(f"Error: Model file not found at {args.load_model}")
+            return
+    else:
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(model.parameters(), lr=args.lr)
+
+        epochs = args.epochs
+        for epoch in range(epochs):
+            model.train()
+            total_loss = 0
+            for inputs, targets in dataloader:
+                inputs = inputs.to(device)
+                targets = targets.to(device)
+
+                optimizer.zero_grad()
+                outputs = model(
+                    nn.functional.one_hot(inputs,
+                                          num_classes=len(bpe.vocab)).float())
+
+                loss = criterion(outputs.transpose(1, 2), targets)
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+
+            print(f"Epoch: {epoch + 1}/{epochs}, " +
+                  f"Loss: {total_loss / len(dataloader):.4f}")
+
+        torch.save(model.state_dict(), args.output_model)
+        print(f"Saved model to {args.output_model}")
+
+    def generate_text(model,
+                      start_text,
+                      bpe,
+                      device,
+                      max_length=100,
+                      temperature=1.0):
+        model.eval()
+        start_tokens = bpe.tokenize(start_text)
+        start_ids = [bpe.vocab_to_id[token] for token in start_tokens]
+        generated_ids = start_ids[:]
+
+        with torch.no_grad():
+            for _ in range(max_length):
+                input_tensor = torch.tensor(
+                        generated_ids).unsqueeze(0).to(device)
+                output = model(
+                    nn.functional.one_hot(
+                            input_tensor,
+                            num_classes=len(bpe.vocab)).float())
+                output = output[:, -1, :] / temperature
+                probs = F.softmax(output, dim=-1)
+                next_id = torch.multinomial(probs, num_samples=1).item()
+                generated_ids.append(next_id)
+                if next_id == bpe.vocab_to_id["<end>"]:
+                    break
+
+        generated_tokens = [bpe.id_to_vocab[idx] for idx in generated_ids]
+        generated_text = " ".join(generated_tokens)
+        return generated_text
+
+    start_text = args.start_text
+    generated_text = generate_text(model,
+                                   start_text,
+                                   bpe,
+                                   device,
+                                   args.max_length,
+                                   args.temperature)
+    print(f"\nGenerated Text: {generated_text}")
 
 
-class TextDataset(Dataset):
-    def __init__(self, tokens, vocab, seq_len):
-        self.tokens = tokens
-        self.vocab = list(vocab)
-        self.vocab_to_id = {token: id for id, token in enumerate(self.vocab)}
-        self.ids = [self.vocab_to_id.get(token, 0) for token in self.tokens]
-        self.seq_len = seq_len
-
-        self.sequences = []
-        for i in range(0, len(self.ids) - seq_len, 1):
-            self.sequences.append(self.ids[i: i + seq_len + 1])
-
-    def __len__(self):
-        return len(self.sequences)
-
-    def __getitem__(self, idx):
-        sequence = self.sequences[idx]
-        return torch.tensor(sequence[:-1],
-                            dtype=torch.long), torch.tensor(sequence[1:],
-                                                            dtype=torch.long)
-
-
-seq_len = 64
-dataset = TextDataset(tokens, bpe.vocab, seq_len)
-dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
-
-d_model = 32
-d_state = 4
-expansion_factor = 2
-num_layers = 2
-input_size = len(bpe.vocab)
-output_size = len(bpe.vocab)
-conv_kernel = 3
-
-model = Model(d_model,
-              d_state,
-              expansion_factor,
-              num_layers,
-              input_size,
-              output_size,
-              conv_kernel)
-
-
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-epochs = 100
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
-
-for epoch in range(epochs):
-    model.train()
-    total_loss = 0
-    for inputs, targets in dataloader:
-        inputs = inputs.to(device)
-        targets = targets.to(device)
-
-        optimizer.zero_grad()
-        outputs = model(
-            nn.functional.one_hot(inputs,
-                                  num_classes=len(bpe.vocab)).float())
-
-        loss = criterion(outputs.transpose(1, 2), targets)
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item()
-
-    print(f"Epoch: {epoch + 1}/{epochs}, " +
-          f"Loss: {total_loss / len(dataloader):.4f}")
-
-
-def generate_text(model,
-                  start_text,
-                  bpe,
-                  device,
-                  max_length=100,
-                  temperature=1.0):
-    model.eval()
-    start_tokens = bpe.tokenize(start_text)
-    start_ids = [bpe.vocab_to_id[token] for token in start_tokens]
-    generated_ids = start_ids[:]
-
-    with torch.no_grad():
-        for _ in range(max_length):
-            input_tensor = torch.tensor(generated_ids).unsqueeze(0).to(device)
-            output = model(
-                nn.functional.one_hot(
-                        input_tensor,
-                        num_classes=len(bpe.vocab)).float())
-            output = output[:, -1, :] / temperature
-            probs = F.softmax(output, dim=-1)
-            next_id = torch.multinomial(probs, num_samples=1).item()
-            generated_ids.append(next_id)
-            if next_id == bpe.vocab_to_id["<end>"]:
-                break
-
-    generated_tokens = [bpe.id_to_vocab[idx] for idx in generated_ids]
-    generated_text = " ".join(generated_tokens)
-    return generated_text
-
-
-start_text = "You can"
-generated_text = generate_text(model,
-                               start_text,
-                               bpe,
-                               device,
-                               100)
-print(f"\nGenerated Text: {generated_text}")
+if __name__ == "__main__":
+    main()
